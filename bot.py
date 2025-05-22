@@ -225,10 +225,10 @@ async def reply(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text('Ржомба')
     await save_data()
 
-async def background_task(app):
-    while True:
-        await asyncio.sleep(60)
-        # ТУТ можна додати щось, що треба виконувати фоном
+async def periodic_job(context: ContextTypes.DEFAULT_TYPE):
+    # Приклад коду, який виконується фоном кожні 60 секунд
+    # Можна сюди додати автозбереження або чистку спам-даних
+    await save_data()
 
 async def main():
     app = ApplicationBuilder().token('7957837080:AAH1O_tEfW9xC9jfUt2hRXILG-Z579_w7ig').build()
@@ -247,12 +247,9 @@ async def main():
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, reply))
     app.add_handler(MessageHandler(filters.PHOTO, setphoto))
 
-    # Запускаємо фоновий таск **до** run_polling
-    # Інакше буде помилка "coroutine was never awaited"
-    asyncio.create_task(background_task(app))
+    # Фоновий таск, що повторюється кожні 60 секунд
+    app.job_queue.run_repeating(periodic_job, interval=60, first=0)
 
-    # await run_polling - очікуємо, поки бот запрацює
     await app.run_polling()
 
-if __name__ == '__main__':
-    asyncio.run(main())
+if __name__ ==
