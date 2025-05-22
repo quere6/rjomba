@@ -18,6 +18,7 @@ PHRASES = {
 # Для антиспаму
 user_messages = defaultdict(list)
 banned_users = {}
+user_ban_durations = defaultdict(lambda: 5 * 60)  # початковий бан 5 хв (в секундах)
 
 # Для підрахунку фраз
 message_count = 0
@@ -25,7 +26,7 @@ message_count = 0
 # Параметри обмежень
 SPAM_LIMIT = 150
 TIME_WINDOW = 5 * 60
-BAN_TIME = 15 * 60
+MAX_BAN_TIME = 30 * 60  # максимум 30 хв
 
 # Функція нормалізації тексту
 def normalize(text):
@@ -47,8 +48,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # /words
 async def words(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    word_list = "\n".join([f"- {w}" for w in PHRASES])
-    await update.message.reply_text(f"Ось фрази, які я розумію:\n{word_list}")
+    word_list = "\n".join([f"- {w}" for w in PHRASES.keys()])
+    await update.message.reply_text(f"Ось фрази, які ти можеш написати:\n{word_list}")
 
 # Основна логіка
 async def reply(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -59,18 +60,24 @@ async def reply(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # Перевірка бану
     if user_id in banned_users:
-        if now < banned_users[user_id]:
-            await update.message.reply_text("Ти в бані, почекай 15 хвилин.")
+        ban_end = banned_users[user_id]
+        if now < ban_end:
+            # Не відповідаємо користувачу під час бану
             return
         else:
             del banned_users[user_id]
+            user_ban_durations[user_id] = 5 * 60  # скидаємо бан до початкового
 
     # Спам контроль
     user_messages[user_id].append(now)
     user_messages[user_id] = [t for t in user_messages[user_id] if (now - t).total_seconds() <= TIME_WINDOW]
     if len(user_messages[user_id]) > SPAM_LIMIT:
-        banned_users[user_id] = now + timedelta(seconds=BAN_TIME)
-        await update.message.reply_text("Не дрочи так часто - хуй болітиме")
+        # Якщо користувач вже був забанений раніше, додаємо час бану +5 хв, максимум 30 хв
+        current_ban = user_ban_durations[user_id]
+        new_ban = min(current_ban + 5 * 60, MAX_BAN_TIME)
+        user_ban_durations[user_id] = new_ban
+        banned_users[user_id] = now + timedelta(seconds=new_ban)
+        # Повідомляти не будемо, бо бот не має відповідати під час бану
         return
 
     # Обробка повідомлення
