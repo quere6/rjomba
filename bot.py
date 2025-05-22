@@ -70,10 +70,10 @@ def parse_time(arg):
 # --- КОМАНДИ ---
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Я Ржомба Бот")
+    await update.message.reply_text("Привіт! Я Ржомба Бот 🤖")
 
 async def words(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Фрази: \n" + "\n".join(["- " + fmt(w) for w in PHRASES]))
+    await update.message.reply_text("📚 Фрази: \n" + "\n".join(["- " + fmt(w) for w in PHRASES]))
 
 async def ban(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != OWNER_ID:
@@ -85,9 +85,9 @@ async def ban(update: Update, context: ContextTypes.DEFAULT_TYPE):
     for uid, profile in profiles.items():
         if profile.get("username") == username:
             banned_users[int(uid)] = datetime.now() + timedelta(seconds=duration)
-            await update.message.reply_text(f"@{username} забанено на {duration // 60} хв.")
+            await update.message.reply_text(f"🚫 @{username} забанено на {duration // 60} хв.")
             return
-    await update.message.reply_text("Користувача не знайдено.")
+    await update.message.reply_text("❌ Користувача не знайдено.")
 
 async def unban(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != OWNER_ID:
@@ -98,35 +98,35 @@ async def unban(update: Update, context: ContextTypes.DEFAULT_TYPE):
     for uid in list(banned_users):
         if profiles.get(str(uid), {}).get("username") == username:
             del banned_users[uid]
-            await update.message.reply_text(f"Користувача @{username} розбанено.")
+            await update.message.reply_text(f"✅ Користувача @{username} розбанено.")
             return
-    await update.message.reply_text("Користувача не знайдено або не забанений.")
+    await update.message.reply_text("❌ Користувача не знайдено або не забанений.")
 
 async def banlist(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != OWNER_ID:
         return
     lst = [f"@{profiles[str(uid)].get('username')}" for uid in banned_users if str(uid) in profiles]
-    await update.message.reply_text("Забанені: \n" + "\n".join(lst) if lst else "Немає забанених")
+    await update.message.reply_text("🚷 Забанені: \n" + "\n".join(lst) if lst else "Немає забанених")
 
 async def setphoto(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not update.message.photo:
-        await update.message.reply_text("Пришли фото")
-        return
     uid = str(update.effective_user.id)
-    profiles.setdefault(uid, {})
-    file_id = update.message.photo[-1].file_id
-    profiles[uid]["photo"] = file_id
-    await save_data()
-    await update.message.reply_text("Фото встановлено!")
+    if update.message.photo:
+        file_id = update.message.photo[-1].file_id
+        profiles.setdefault(uid, {})
+        profiles[uid]["photo"] = file_id
+        await save_data()
+        await update.message.reply_text("🖼 Фото встановлено!")
+    else:
+        await update.message.reply_text("📷 Пришли фото, яке хочеш встановити у профіль")
 
 async def profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = str(update.effective_user.id)
     data = profiles.get(uid, {})
-    text = f"Профіль @{data.get('username', 'немає')}\n"
-    text += f"Улюблена фраза: {data.get('fav', 'Немає')}\n"
-    text += f"Ржомбометр: {data.get('rzhomb', 0)}\n"
-    text += f"Монети: {data.get('coins', 0)}\n"
-    text += f"Забанений разів: {data.get('bans', 0)}"
+    text = f"👤 Профіль @{data.get('username', 'немає')}\n"
+    text += f"💬 Улюблена фраза: {fmt(data.get('fav', 'Немає'))}\n"
+    text += f"📊 Ржомбометр: {data.get('rzhomb', 0)}\n"
+    text += f"🪙 Монети: {data.get('coins', 0)}\n"
+    text += f"🚫 Забанений разів: {data.get('bans', 0)}"
     if data.get("photo"):
         await update.message.reply_photo(data["photo"], caption=text)
     else:
@@ -167,7 +167,7 @@ async def reply(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     if "богдан" in text:
-        await update.message.reply_text("я кінчив")
+        await update.message.reply_text("Я Кінчив")
     elif text in PHRASES:
         profiles[str(uid)]["rzhomb"] += 1
         profiles[str(uid)]["coins"] += 1
@@ -176,7 +176,7 @@ async def reply(update: Update, context: ContextTypes.DEFAULT_TYPE):
             profiles[str(uid)]["fav"] = text
         await update.message.reply_text(fmt(PHRASES[text]))
     elif similar(text):
-        await update.message.reply_text("Ти мазила")
+        await update.message.reply_text("Ти Мазила")
     else:
         await update.message.reply_text("Ржомба")
 
@@ -204,6 +204,7 @@ def main():
     app.add_handler(CommandHandler("setphoto", setphoto))
     app.add_handler(CommandHandler("top", top))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, reply))
+    app.add_handler(MessageHandler(filters.PHOTO, setphoto))
 
     threading.Thread(target=keep_alive, daemon=True).start()
     app.run_polling()
