@@ -3,18 +3,39 @@ import re
 import asyncio
 import json
 import os
-from telegram import Update, InputFile
-from telegram.ext import ApplicationBuilder, MessageHandler, CommandHandler, ContextTypes, filters
+from threading import Thread
+from flask import Flask
+from telegram import Update
+from telegram.ext import (
+    ApplicationBuilder,
+    MessageHandler,
+    CommandHandler,
+    ContextTypes,
+    filters,
+)
 from collections import defaultdict
 from datetime import datetime, timedelta
 from difflib import SequenceMatcher
 
+# --- Flask Keep-Alive ---
+app_web = Flask(__name__)
+
+@app_web.route("/")
+def home():
+    return "I'm alive"
+
+def run_web():
+    app_web.run(host="0.0.0.0", port=8080)
+
+Thread(target=run_web).start()
+
+# --- Bot Logic ---
 PHRASES = {
     "ржомба": "🤣",
     "ну ти там держись": "Ссикло",
     "а воно мені не нада": "Не мужик",
     "наш живчик": "Містер Біст",
-    "сігма бой": "Богдан"
+    "сігма бой": "Богдан",
 }
 
 SPAM_LIMIT = 150
@@ -29,11 +50,11 @@ profiles = {}
 OWNER_ID = 1234960363
 
 if os.path.exists(DATA_FILE):
-    with open(DATA_FILE, 'r') as f:
+    with open(DATA_FILE, "r") as f:
         profiles = json.load(f)
 
 async def save_data():
-    with open(DATA_FILE, 'w') as f:
+    with open(DATA_FILE, "w") as f:
         json.dump(profiles, f)
 
 def normalize(text):
@@ -49,10 +70,11 @@ def similar(input_text):
 def fmt(text):
     return " ".join(w.capitalize() for w in text.split())
 
+# --- Команди бота ---
 async def ban(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != OWNER_ID:
         return
-    if not context.args or not context.args[0].startswith("@"): 
+    if not context.args or not context.args[0].startswith("@"):
         return
     username = context.args[0][1:]
     for uid, profile in profiles.items():
@@ -65,7 +87,7 @@ async def ban(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def unban(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != OWNER_ID:
         return
-    if not context.args or not context.args[0].startswith("@"): 
+    if not context.args or not context.args[0].startswith("@"):
         return
     username = context.args[0][1:]
     for uid in list(banned_users):
@@ -88,7 +110,7 @@ async def setphoto(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = str(update.effective_user.id)
     profiles.setdefault(uid, {})
     file_id = update.message.photo[-1].file_id
-    profiles[uid]['photo'] = file_id
+    profiles[uid]["photo"] = file_id
     await save_data()
     await update.message.reply_text("Фото встановлено!")
 
@@ -104,10 +126,6 @@ async def profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_photo(data["photo"], caption=text)
     else:
         await update.message.reply_text(text)
-
-async def keep_alive():
-    while True:
-        await asyncio.sleep(60)
 
 async def reply(update: Update, context: ContextTypes.DEFAULT_TYPE):
     now = datetime.now()
@@ -153,15 +171,24 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def words(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Фрази: \n" + "\n".join(["- " + fmt(w) for w in PHRASES]))
 
-app = ApplicationBuilder().token("7957837080:AAH1O_tEfW9xC9jfUt2hRXILG-Z579_w7ig").build()
-app.add_handler(CommandHandler("start", start))
-app.add_handler(CommandHandler("words", words))
-app.add_handler(CommandHandler("ban", ban))
-app.add_handler(CommandHandler("unban", unban))
-app.add_handler(CommandHandler("banlist", banlist))
-app.add_handler(CommandHandler("profile", profile))
-app.add_handler(CommandHandler("setphoto", setphoto))
-app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, reply))
+async def keep_alive(context: ContextTypes.DEFAULT_TYPE):
+    pass
 
-app.job_queue.run_repeating(lambda ctx: None, interval=60, first=0)
-app.run_polling()
+async def main():
+    app = ApplicationBuilder().token("тут_токен").build()
+
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("words", words))
+    app.add_handler(CommandHandler("ban", ban))
+    app.add_handler(CommandHandler("unban", unban))
+    app.add_handler(CommandHandler("banlist", banlist))
+    app.add_handler(CommandHandler("profile", profile))
+    app.add_handler(CommandHandler("setphoto", setphoto))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, reply))
+
+    app.job_queue.run_repeating(keep_alive, interval=60, first=0)
+
+    await app.run_polling()
+
+if __name__ == "__main__":
+    asyncio.run(main())
