@@ -134,9 +134,12 @@ async def profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
     txt += f"\ud83e\ude99 Монети: {p.get('coins', 0)}\n"
     txt += f"\u26a1 Енергія: {p.get('energy', 0)}\n"
     txt += f"\ud83d\udd1d Рівень: {p.get('level', 'Новачок')}"
-    if p.get('photo'):
-        await update.message.reply_photo(p['photo'], caption=txt)
-    else:
+    try:
+        if p.get('photo'):
+            await update.message.reply_photo(p['photo'], caption=txt)
+        else:
+            await update.message.reply_text(txt)
+    except:
         await update.message.reply_text(txt)
 
 async def top(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -226,7 +229,7 @@ async def background_task():
         await asyncio.sleep(60)
 
 async def main():
-    app = ApplicationBuilder().token("YOUR_TOKEN").build()
+    app = ApplicationBuilder().token("7957837080:AAH1O_tEfW9xC9jfUt2hRXILG-Z579_w7ig").build()
 
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("help", help_cmd))
