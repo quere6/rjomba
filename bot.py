@@ -27,28 +27,40 @@ SPAM_LIMIT = 150
 BAN_STEPS = [300, 600, 900, 1800]
 TIME_WINDOW = 300
 DATA_FILE = "users.json"
+DAILY_FILE = "daily.json"
 
-user_messages = defaultdict(list)
+OWNER_ID = 1234960363
+
+energy_max = 100
+energy_recover_period = 5
+
+events_days = {0, 2, 3, 4}
+daily_base = 50
+
+def load_json(path, default):
+    if os.path.exists(path):
+        with open(path, "r") as f:
+            return json.load(f)
+    return default
+
+profiles = load_json(DATA_FILE, {})
+daily = load_json(DAILY_FILE, {})
 banned_users = {}
 ban_counts = defaultdict(int)
-profiles = {}
-OWNER_ID = 1234960363  # заміни на свій ID
-
-if os.path.exists(DATA_FILE):
-    with open(DATA_FILE, "r") as f:
-        profiles = json.load(f)
+user_messages = defaultdict(list)
 
 async def save_data():
     with open(DATA_FILE, "w") as f:
         json.dump(profiles, f)
+    with open(DAILY_FILE, "w") as f:
+        json.dump(daily, f)
 
 def normalize(text):
     return re.sub(r"[^\w\s]", "", text.lower()).strip()
 
 def similar(input_text):
     for phrase in PHRASES:
-        ratio = SequenceMatcher(None, input_text, phrase).ratio()
-        if ratio > 0.7:
+        if SequenceMatcher(None, input_text, phrase).ratio() > 0.7:
             return True
     return False
 
@@ -56,162 +68,168 @@ def fmt(text):
     return " ".join(w.capitalize() for w in text.split())
 
 def parse_time(arg):
-    if arg.endswith("s"):
-        return int(arg[:-1])
-    elif arg.endswith("m"):
-        return int(arg[:-1]) * 60
-    elif arg.endswith("h"):
-        return int(arg[:-1]) * 3600
-    elif arg.endswith("d"):
-        return int(arg[:-1]) * 86400
-    return 1800
-
-# --- КОМАНДИ ---
+    unit = arg[-1]
+    num = int(arg[:-1])
+    return {'s': 1, 'm': 60, 'h': 3600, 'd': 86400}.get(unit, 1800) * num
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Привіт! Я Ржомба Бот 🤖")
+    await update.message.reply_text("Привіт! Я Ржомба Бот 🤖. Використай /help для списку команд.")
+
+async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    commands = [
+        "/start", "/help", "/words", "/ban @user [time]", "/unban @user", "/banlist",
+        "/profile", "/setphoto", "/top", "/daily", "/duel @user"
+    ]
+    await update.message.reply_text("Доступні команди:\n" + "\n".join(commands))
 
 async def words(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("📚 Фрази: \n" + "\n".join(["- " + fmt(w) for w in PHRASES]))
+    await update.message.reply_text("\ud83d\udcda Фрази: \n" + "\n".join(["- " + fmt(w) for w in PHRASES]))
 
 async def ban(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != OWNER_ID:
         return
-    if not context.args or not context.args[0].startswith("@"):
+    if not context.args or not context.args[0].startswith("@"): 
         return
-    username = context.args[0][1:]
-    duration = parse_time(context.args[1]) if len(context.args) > 1 else 1800
-    for uid, profile in profiles.items():
-        if profile.get("username") == username:
+    user, duration = context.args[0][1:], parse_time(context.args[1]) if len(context.args) > 1 else 1800
+    for uid, p in profiles.items():
+        if p.get('username') == user:
             banned_users[int(uid)] = datetime.now() + timedelta(seconds=duration)
-            await update.message.reply_text(f"🚫 @{username} забанено на {duration // 60} хв.")
+            await update.message.reply_text(f"\ud83d\udeab @{user} забанено на {duration//60} хв.")
             return
-    await update.message.reply_text("❌ Користувача не знайдено.")
+    await update.message.reply_text("\u274c Користувача не знайдено.")
 
 async def unban(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != OWNER_ID:
         return
-    if not context.args or not context.args[0].startswith("@"):
+    if not context.args or not context.args[0].startswith("@"): 
         return
-    username = context.args[0][1:]
+    user = context.args[0][1:]
     for uid in list(banned_users):
-        if profiles.get(str(uid), {}).get("username") == username:
+        if profiles.get(str(uid), {}).get('username') == user:
             del banned_users[uid]
-            await update.message.reply_text(f"✅ Користувача @{username} розбанено.")
+            await update.message.reply_text(f"\u2705 @{user} розбанено.")
             return
-    await update.message.reply_text("❌ Користувача не знайдено або не забанений.")
+    await update.message.reply_text("\u274c Не знайдено.")
 
 async def banlist(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != OWNER_ID:
         return
-    lst = [f"@{profiles[str(uid)].get('username')}" for uid in banned_users if str(uid) in profiles]
-    await update.message.reply_text("🚷 Забанені: \n" + "\n".join(lst) if lst else "Немає забанених")
+    lst = [f"@{profiles[str(uid)]['username']}" for uid in banned_users if str(uid) in profiles]
+    await update.message.reply_text("\ud83d\ude37 Забанені:\n" + ("\n".join(lst) if lst else "немає"))
 
 async def setphoto(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = str(update.effective_user.id)
     if update.message.photo:
-        file_id = update.message.photo[-1].file_id
-        profiles.setdefault(uid, {})
-        profiles[uid]["photo"] = file_id
+        profiles.setdefault(uid, {})['photo'] = update.message.photo[-1].file_id
         await save_data()
-        await update.message.reply_text("🖼 Фото встановлено!")
+        await update.message.reply_text("\ud83d\uddbc Фото встановлено!")
     else:
-        await update.message.reply_text("📷 Пришли фото, яке хочеш встановити у профіль")
+        await update.message.reply_text("\ud83d\udcf7 Надішли фото без команди.")
 
 async def profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = str(update.effective_user.id)
-    data = profiles.get(uid, {})
-    text = f"👤 Профіль @{data.get('username', 'немає')}\n"
-    text += f"💬 Улюблена фраза: {fmt(data.get('fav', 'Немає'))}\n"
-    text += f"📊 Ржомбометр: {data.get('rzhomb', 0)}\n"
-    text += f"🪙 Монети: {data.get('coins', 0)}\n"
-    text += f"🚫 Забанений разів: {data.get('bans', 0)}\n"
-    text += f"⚡ Енергія: {data.get('energy', 0)}"
-    if data.get("photo"):
-        await update.message.reply_photo(data["photo"], caption=text)
+    p = profiles.get(uid, {})
+    txt = f"\ud83d\udc64 Профіль @{p.get('username', 'немає')}\n"
+    txt += f"\ud83d\udcca Ржомбометр: {p.get('rzhomb', 0)}\n"
+    txt += f"\ud83e\ude99 Монети: {p.get('coins', 0)}\n"
+    txt += f"\u26a1 Енергія: {p.get('energy', 0)}\n"
+    txt += f"\ud83d\udd1d Рівень: {p.get('level', 'Новачок')}"
+    if p.get('photo'):
+        await update.message.reply_photo(p['photo'], caption=txt)
     else:
-        await update.message.reply_text(text)
+        await update.message.reply_text(txt)
 
 async def top(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    top_list = sorted(profiles.items(), key=lambda x: (-x[1].get("coins", 0), -x[1].get("rzhomb", 0)))[:10]
-    text = "🏆 Таблиця лідерів:\n"
-    for uid, data in top_list:
-        text += f"@{data.get('username', 'немає')} — {data.get('coins', 0)} монет, {data.get('rzhomb', 0)} ржомб\n"
-    await update.message.reply_text(text)
+    arr = sorted(profiles.items(), key=lambda x: (-x[1].get('coins', 0), -x[1].get('rzhomb', 0)))[:10]
+    msg = "\ud83c\udfc6 Лідери:\n"
+    for uid, p in arr:
+        msg += f"@{p.get('username', '')} {p.get('coins', 0)}\ud83d\udcb0 {p.get('rzhomb', 0)}\ud83e\udd23\n"
+    await update.message.reply_text(msg)
 
-# --- ГОЛОВНА ЛОГІКА ---
+async def daily_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    uid = str(update.effective_user.id)
+    now = int(datetime.now().timestamp())
+    last = daily.get(uid, 0)
+    if now - last < 86400:
+        await update.message.reply_text("\u23f3 Завтра буде нова нагорода.")
+        return
+    base = daily_base
+    bal = profiles.setdefault(uid, {}).get('coins', 0)
+    award = base if last == 0 else base + int(bal * 0.15)
+    profiles[uid]['coins'] = bal + award
+    daily[uid] = now
+    await save_data()
+    await update.message.reply_text(f"\ud83c\udf81 Отримано {award} монет!")
+
+async def duel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("\u2694\ufe0f Дуелі ще в розробці...")
 
 async def reply(update: Update, context: ContextTypes.DEFAULT_TYPE):
     now = datetime.now()
     uid = update.effective_user.id
-    username = update.effective_user.username or f"user{uid}"
-    profiles.setdefault(str(uid), {}).update({"username": username})
-    profile = profiles[str(uid)]
-    profile.setdefault("rzhomb", 0)
-    profile.setdefault("coins", 0)
-    profile.setdefault("bans", 0)
-    profile.setdefault("energy", 100)
-    profile.setdefault("energy_last_update", now.timestamp())
+    txt_raw = update.message.text or ''
+    uname = update.effective_user.username or f'user{uid}'
+    p = profiles.setdefault(str(uid), {'username': uname, 'rzhomb': 0, 'coins': 0, 'energy': energy_max, 'bans': 0, 'energy_last_update': now.timestamp(), 'level': 'Новачок'})
 
-    last_update = datetime.fromtimestamp(profile["energy_last_update"])
-    minutes_passed = (now - last_update).total_seconds() // 60
-    energy_recovery_rate = 1
-    recovery_period = 5
-
-    recovered_energy = int(minutes_passed // recovery_period) * energy_recovery_rate
-    if recovered_energy > 0:
-        profile["energy"] = min(100, profile["energy"] + recovered_energy)
-        profile["energy_last_update"] = now.timestamp()
+    last = datetime.fromtimestamp(p['energy_last_update'])
+    rec = (now - last).seconds // (energy_recover_period * 60)
+    if rec > 0:
+        p['energy'] = min(energy_max, p['energy'] + rec)
+        p['energy_last_update'] = now.timestamp()
 
     if uid in banned_users and now < banned_users[uid]:
         return
 
-    text = normalize(update.message.text)
     user_messages[uid].append(now)
-    user_messages[uid] = [t for t in user_messages[uid] if (now - t).total_seconds() < TIME_WINDOW]
-
+    user_messages[uid] = [t for t in user_messages[uid] if (now - t).seconds < TIME_WINDOW]
     if len(user_messages[uid]) > SPAM_LIMIT:
-        ban_count = ban_counts[uid]
-        duration = BAN_STEPS[min(ban_count, len(BAN_STEPS) - 1)]
-        banned_users[uid] = now + timedelta(seconds=duration)
+        c = ban_counts[uid]
+        d = BAN_STEPS[min(c, len(BAN_STEPS) - 1)]
+        banned_users[uid] = now + timedelta(seconds=d)
         ban_counts[uid] += 1
-        profile["bans"] += 1
+        p['bans'] += 1
         await save_data()
         return
 
-    rzhomba_count = update.message.text.lower().count("ржомба")
+    cnt = txt_raw.lower().count('ржомба')
+    mult = 2 if datetime.today().weekday() in events_days else 1
 
-    if rzhomba_count > 0:
-        if profile["energy"] >= rzhomba_count:
-            profile["rzhomb"] += rzhomba_count
-            profile["coins"] += rzhomba_count
-            profile["energy"] -= rzhomba_count
-            await update.message.reply_text(f"Зароблено {rzhomba_count} ржомб! Енергія залишилась: {profile['energy']}")
+    if cnt > 0:
+        cost = cnt
+        if p['energy'] >= cost:
+            earned = cnt * mult
+            p['rzhomb'] += cnt
+            p['coins'] += earned
+            p['energy'] -= cost
+            total_msgs = len(user_messages[uid])
+            if total_msgs > 500:
+                p['level'] = 'Майстер Ржомби'
+            elif total_msgs > 100:
+                p['level'] = 'Просунутий'
+            elif total_msgs > 30:
+                p['level'] = 'Любитель'
+            await update.message.reply_text(f"Зароблено {earned} монет! Енергія: {p['energy']}. Рівень: {p['level']}")
         else:
-            await update.message.reply_text(f"Не вистачає енергії для заробітку ржомб! Зараз: {profile['energy']}")
-    elif "богдан" in text:
-        await update.message.reply_text("Я Кінчив")
-    elif text in PHRASES:
-        await update.message.reply_text(fmt(PHRASES[text]))
-    elif similar(text):
-        await update.message.reply_text("Ти Мазила")
+            await update.message.reply_text(f"Не вистачає енергії ({p['energy']})")
+    elif 'богдан' in txt_raw.lower():
+        await update.message.reply_text('Я Кінчив')
+    elif normalize(txt_raw) in PHRASES:
+        await update.message.reply_text(fmt(PHRASES[normalize(txt_raw)]))
+    elif similar(normalize(txt_raw)):
+        await update.message.reply_text('Ти Мазила')
     else:
-        await update.message.reply_text("Ржомба")
-
+        await update.message.reply_text('Ржомба')
     await save_data()
 
-# --- ФОН ДЛЯ ПІДТРИМКИ АКТИВНОСТІ ---
-
-async def background_task(app):
+async def background_task():
     while True:
         await asyncio.sleep(60)
 
-# --- MAIN ---
-
-async def run_bot():
-    app = ApplicationBuilder().token("7957837080:AAH1O_tEfW9xC9jfUt2hRXILG-Z579_w7ig").build()
+async def main():
+    app = ApplicationBuilder().token("YOUR_TOKEN").build()
 
     app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("help", help_cmd))
     app.add_handler(CommandHandler("words", words))
     app.add_handler(CommandHandler("ban", ban))
     app.add_handler(CommandHandler("unban", unban))
@@ -219,19 +237,13 @@ async def run_bot():
     app.add_handler(CommandHandler("profile", profile))
     app.add_handler(CommandHandler("setphoto", setphoto))
     app.add_handler(CommandHandler("top", top))
+    app.add_handler(CommandHandler("daily", daily_cmd))
+    app.add_handler(CommandHandler("duel", duel))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, reply))
     app.add_handler(MessageHandler(filters.PHOTO, setphoto))
 
-    asyncio.create_task(background_task(app))
+    asyncio.create_task(background_task())
     await app.run_polling()
 
 if __name__ == "__main__":
-    try:
-        asyncio.run(run_bot())
-    except RuntimeError as e:
-        if "running event loop" in str(e):
-            loop = asyncio.get_event_loop()
-            loop.create_task(run_bot())
-            loop.run_forever()
-        else:
-            raise
+    asyncio.run(main())
