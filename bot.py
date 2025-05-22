@@ -168,17 +168,17 @@ async def reply(update: Update, context: ContextTypes.DEFAULT_TYPE):
     txt_raw = update.message.text or ''
     uname = update.effective_user.username or f'user{uid}'
     p = profiles.setdefault(str(uid), {'username': uname, 'rzhomb': 0, 'coins': 0, 'energy': energy_max, 'bans': 0, 'energy_last_update': now.timestamp(), 'level': 'Новачок'})
-
+    
     # Відновлення енергії
     last = datetime.fromtimestamp(p['energy_last_update'])
     rec = (now - last).seconds // (energy_recover_period * 60)
     if rec > 0:
         p['energy'] = min(energy_max, p['energy'] + rec)
         p['energy_last_update'] = now.timestamp()
-
+    
     if uid in banned_users and now < banned_users[uid]:
         return
-
+    
     # Антиспам
     user_messages[uid].append(now)
     user_messages[uid] = [t for t in user_messages[uid] if (now - t).seconds < TIME_WINDOW]
@@ -190,11 +190,11 @@ async def reply(update: Update, context: ContextTypes.DEFAULT_TYPE):
         p['bans'] += 1
         await save_data()
         return
-
+    
     # Підрахунок 'ржомба' та мультиплікатор подій
     cnt = txt_raw.lower().count('ржомба')
     mult = 2 if datetime.today().weekday() in events_days else 1
-
+    
     if cnt > 0:
         cost = cnt
         if p['energy'] >= cost:
@@ -202,7 +202,7 @@ async def reply(update: Update, context: ContextTypes.DEFAULT_TYPE):
             p['rzhomb'] += cnt
             p['coins'] += earned
             p['energy'] -= cost
-
+            
             # Прокачка рівня за частоту гри (приклад)
             total_msgs = len(user_messages[uid])
             if total_msgs > 500:
@@ -211,7 +211,7 @@ async def reply(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 p['level'] = 'Просунутий'
             elif total_msgs > 30:
                 p['level'] = 'Любитель'
-
+            
             await update.message.reply_text(f"Зароблено {earned} монет! Енергія: {p['energy']}. Рівень: {p['level']}")
         else:
             await update.message.reply_text(f"Не вистачає енергії ({p['energy']})")
@@ -228,7 +228,7 @@ async def reply(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def background_task(app):
     while True:
         await asyncio.sleep(60)
-        # ТУТ можна додати щось, що треба виконувати фоном
+        # Тут можна додати що завгодно, що має виконуватись фоном
 
 async def main():
     app = ApplicationBuilder().token('7957837080:AAH1O_tEfW9xC9jfUt2hRXILG-Z579_w7ig').build()
@@ -248,9 +248,8 @@ async def main():
     app.add_handler(MessageHandler(filters.PHOTO, setphoto))
 
     asyncio.create_task(background_task(app))
-
     await app.run_polling()
 
 if __name__ == "__main__":
     import asyncio
-    asyncio.run(main())
+    asyncio.get_event_loop().run_until_complete(main())
