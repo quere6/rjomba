@@ -25,13 +25,11 @@ PHRASES = {
 }
 
 SPAM_LIMIT = 150
-CMD_FLOOD_INTERVAL = 3  # секунд між командами
 BAN_STEPS = [300, 600, 900, 1800]
 TIME_WINDOW = 300
 DATA_FILE = "users.json"
 
 user_messages = defaultdict(list)
-user_commands = defaultdict(lambda: datetime.min)
 banned_users = {}
 ban_counts = defaultdict(int)
 profiles = {}
@@ -58,17 +56,9 @@ def similar(input_text):
 def fmt(text):
     return " ".join(w.capitalize() for w in text.split())
 
-def is_command_flooding(user_id):
-    now = datetime.now()
-    last = user_commands.get(user_id, datetime.min)
-    if (now - last).total_seconds() < CMD_FLOOD_INTERVAL:
-        return True
-    user_commands[user_id] = now
-    return False
-
 # --- Команди бота ---
 async def ban(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id != OWNER_ID or is_command_flooding(update.effective_user.id):
+    if update.effective_user.id != OWNER_ID:
         return
     if not context.args or not context.args[0].startswith("@"):
         return
@@ -81,7 +71,7 @@ async def ban(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Користувача не знайдено.")
 
 async def unban(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id != OWNER_ID or is_command_flooding(update.effective_user.id):
+    if update.effective_user.id != OWNER_ID:
         return
     if not context.args or not context.args[0].startswith("@"):
         return
@@ -94,14 +84,12 @@ async def unban(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Користувача не знайдено або не забанений.")
 
 async def banlist(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id != OWNER_ID or is_command_flooding(update.effective_user.id):
+    if update.effective_user.id != OWNER_ID:
         return
     lst = [f"@{profiles[str(uid)].get('username')}" for uid in banned_users if str(uid) in profiles]
     await update.message.reply_text("Забанені: \n" + "\n".join(lst) if lst else "Немає забанених")
 
 async def setphoto(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if is_command_flooding(update.effective_user.id):
-        return
     if not update.message.photo:
         await update.message.reply_text("Пришли фото")
         return
@@ -113,8 +101,6 @@ async def setphoto(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Фото встановлено!")
 
 async def profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if is_command_flooding(update.effective_user.id):
-        return
     uid = str(update.effective_user.id)
     data = profiles.get(uid, {})
     text = f"Профіль @{data.get('username', 'немає')}\n"
@@ -166,17 +152,13 @@ async def reply(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await save_data()
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if is_command_flooding(update.effective_user.id):
-        return
     await update.message.reply_text("Я Ржомба Бот")
 
 async def words(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if is_command_flooding(update.effective_user.id):
-        return
     await update.message.reply_text("Фрази: \n" + "\n".join(["- " + fmt(w) for w in PHRASES]))
 
 async def main():
-    app = ApplicationBuilder().token("7957837080:AAH1O_tEfW9xC9jfUt2hRXILG-Z579_w7ig").build()
+    app = ApplicationBuilder().token("ТУТ_ВСТАВ_ТВОЇЙ_ТОКЕН").build()
 
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("words", words))
