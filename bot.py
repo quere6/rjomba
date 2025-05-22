@@ -1,7 +1,7 @@
 import os
 import json
 import re
-from datetime import datetime, timedelta
+from datetime import datetime
 from collections import defaultdict
 from difflib import SequenceMatcher
 from telegram import Update
@@ -12,13 +12,11 @@ from telegram.ext import (
     ContextTypes,
     filters,
 )
-from aiohttp import web
 import asyncio
 
 # ======= Налаштування =======
 OWNER_ID = 1234960363
-PORT = int(os.getenv("PORT", "8080"))
-TOKEN = "7957837080:AAH1O_tEfW9xC9jfUt2hRXILG-Z579_w7ig"  # Токен прописаний прямо тут
+TOKEN = "7957837080:AAH1O_tEfW9xC9jfUt2hRXILG-Z579_w7ig"  # Встав сюди свій токен
 
 PHRASES = {
     "ржомба": "🤣",
@@ -29,11 +27,9 @@ PHRASES = {
 }
 
 SPAM_LIMIT = 150
-BAN_STEPS = [300, 600, 900, 1800]
 TIME_WINDOW = 300
 energy_max = 100
 energy_recover_period = 5
-events_days = {0, 2, 3, 4}
 daily_base = 50
 
 DATA_FILE = "users.json"
@@ -48,8 +44,6 @@ def load_json(path, default):
 
 profiles = load_json(DATA_FILE, {})
 daily = load_json(DAILY_FILE, {})
-banned_users = {}
-ban_counts = defaultdict(int)
 user_messages = defaultdict(list)
 
 async def save_data():
@@ -67,14 +61,6 @@ def similar(text):
         if SequenceMatcher(None, text, phrase).ratio() > 0.7:
             return True
     return False
-
-def fmt(text):
-    return " ".join(w.capitalize() for w in text.split())
-
-def parse_time(arg):
-    unit = arg[-1]
-    num = int(arg[:-1])
-    return {'s': 1, 'm': 60, 'h': 3600, 'd': 86400}.get(unit, 1800) * num
 
 # ======= Команди =======
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -114,7 +100,7 @@ async def reply(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "username": uname, "rzhomb": 0, "coins": 0, "energy": energy_max, "energy_last_update": now.timestamp()
     })
 
-    # Energy recovery
+    # Відновлення енергії
     last = datetime.fromtimestamp(profile['energy_last_update'])
     recovered = (now - last).seconds // (energy_recover_period * 60)
     if recovered > 0:
@@ -127,7 +113,7 @@ async def reply(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if len(user_messages[uid]) > SPAM_LIMIT:
         return
 
-    # Обробка
+    # Обробка повідомлень
     norm = normalize(text)
     cnt = text.lower().count("ржомба")
     if cnt > 0 and profile["energy"] >= cnt:
@@ -144,33 +130,17 @@ async def reply(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await save_data()
 
-# ======= Запуск через вебхук =======
-async def run():
+# ======= Запуск бота =======
+async def main():
     app = ApplicationBuilder().token(TOKEN).build()
+
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("help", help_cmd))
     app.add_handler(CommandHandler("profile", profile))
     app.add_handler(CommandHandler("daily", daily_cmd))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, reply))
 
-    async def handler(request):
-        data = await request.json()
-        await app.update_queue.put(Update.de_json(data, app.bot))
-        return web.Response()
-
-    webhook_app = web.Application()
-    webhook_app.add_routes([web.post("/", handler)])
-    await app.initialize()
-    await app.bot.set_webhook(f"https://{os.getenv('RENDER_EXTERNAL_HOSTNAME', 'your-render-url')}/")
-    runner = web.AppRunner(webhook_app)
-    await runner.setup()
-    site = web.TCPSite(runner, "0.0.0.0", PORT)
-    await site.start()
-    print(f"Bot running on port {PORT}")
-
-    # Keep running
-    while True:
-        await asyncio.sleep(3600)
+    await app.run_polling()
 
 if __name__ == "__main__":
-    asyncio.run(run())
+    asyncio.run(main())
