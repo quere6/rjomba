@@ -1,6 +1,5 @@
 import random
 import re
-import asyncio
 import json
 import os
 from telegram import Update
@@ -157,8 +156,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def words(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Фрази: \n" + "\n".join(["- " + fmt(w) for w in PHRASES]))
 
-async def main():
-    app = ApplicationBuilder().token("ТУТ_ВСТАВ_ТВОЇЙ_ТОКЕН").build()
+def main():
+    app = ApplicationBuilder().token("7957837080:AAH1O_tEfW9xC9jfUt2hRXILG-Z579_w7ig").build()
 
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("words", words))
@@ -169,7 +168,7 @@ async def main():
     app.add_handler(CommandHandler("setphoto", setphoto))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, reply))
 
-    await app.run_polling()
+    app.run_polling()
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()
