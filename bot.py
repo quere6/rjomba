@@ -2,6 +2,8 @@ import random
 import re
 import json
 import os
+import threading
+import asyncio
 from telegram import Update
 from telegram.ext import (
     ApplicationBuilder,
@@ -14,7 +16,6 @@ from collections import defaultdict
 from datetime import datetime, timedelta
 from difflib import SequenceMatcher
 
-# --- Bot Logic ---
 PHRASES = {
     "ржомба": "🤣",
     "ну ти там держись": "Ссикло",
@@ -32,7 +33,7 @@ user_messages = defaultdict(list)
 banned_users = {}
 ban_counts = defaultdict(int)
 profiles = {}
-OWNER_ID = 1234960363
+OWNER_ID = 1234960363  # заміни на свій ID
 
 if os.path.exists(DATA_FILE):
     with open(DATA_FILE, "r") as f:
@@ -55,17 +56,36 @@ def similar(input_text):
 def fmt(text):
     return " ".join(w.capitalize() for w in text.split())
 
-# --- Команди бота ---
+def parse_time(arg):
+    if arg.endswith("s"):
+        return int(arg[:-1])
+    elif arg.endswith("m"):
+        return int(arg[:-1]) * 60
+    elif arg.endswith("h"):
+        return int(arg[:-1]) * 3600
+    elif arg.endswith("d"):
+        return int(arg[:-1]) * 86400
+    return 1800
+
+# --- КОМАНДИ ---
+
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("Я Ржомба Бот")
+
+async def words(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("Фрази: \n" + "\n".join(["- " + fmt(w) for w in PHRASES]))
+
 async def ban(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != OWNER_ID:
         return
     if not context.args or not context.args[0].startswith("@"):
         return
     username = context.args[0][1:]
+    duration = parse_time(context.args[1]) if len(context.args) > 1 else 1800
     for uid, profile in profiles.items():
         if profile.get("username") == username:
-            banned_users[int(uid)] = datetime.now() + timedelta(seconds=1800)
-            await update.message.reply_text(f"Користувач @{username} забанений на 30 хвилин.")
+            banned_users[int(uid)] = datetime.now() + timedelta(seconds=duration)
+            await update.message.reply_text(f"@{username} забанено на {duration // 60} хв.")
             return
     await update.message.reply_text("Користувача не знайдено.")
 
@@ -112,6 +132,15 @@ async def profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await update.message.reply_text(text)
 
+async def top(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    top_list = sorted(profiles.items(), key=lambda x: (-x[1].get("coins", 0), -x[1].get("rzhomb", 0)))[:10]
+    text = "🏆 Таблиця лідерів:\n"
+    for uid, data in top_list:
+        text += f"@{data.get('username', 'немає')} — {data.get('coins', 0)} монет, {data.get('rzhomb', 0)} ржомб\n"
+    await update.message.reply_text(text)
+
+# --- ГОЛОВНА ЛОГІКА ---
+
 async def reply(update: Update, context: ContextTypes.DEFAULT_TYPE):
     now = datetime.now()
     uid = update.effective_user.id
@@ -137,7 +166,9 @@ async def reply(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await save_data()
         return
 
-    if text in PHRASES:
+    if "богдан" in text:
+        await update.message.reply_text("я кінчив")
+    elif text in PHRASES:
         profiles[str(uid)]["rzhomb"] += 1
         profiles[str(uid)]["coins"] += 1
         fav = profiles[str(uid)].get("fav")
@@ -148,13 +179,18 @@ async def reply(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Ти мазила")
     else:
         await update.message.reply_text("Ржомба")
+
     await save_data()
 
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Я Ржомба Бот")
+# --- ФОН ДЛЯ ПІДТРИМКИ АКТИВНОСТІ ---
 
-async def words(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Фрази: \n" + "\n".join(["- " + fmt(w) for w in PHRASES]))
+def keep_alive():
+    async def loop():
+        while True:
+            await asyncio.sleep(60)
+    asyncio.run(loop())
+
+# --- MAIN ---
 
 def main():
     app = ApplicationBuilder().token("7957837080:AAH1O_tEfW9xC9jfUt2hRXILG-Z579_w7ig").build()
@@ -166,8 +202,10 @@ def main():
     app.add_handler(CommandHandler("banlist", banlist))
     app.add_handler(CommandHandler("profile", profile))
     app.add_handler(CommandHandler("setphoto", setphoto))
+    app.add_handler(CommandHandler("top", top))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, reply))
 
+    threading.Thread(target=keep_alive, daemon=True).start()
     app.run_polling()
 
 if __name__ == "__main__":
