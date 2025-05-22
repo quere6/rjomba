@@ -3,8 +3,6 @@ import re
 import asyncio
 import json
 import os
-from threading import Thread
-from flask import Flask
 from telegram import Update
 from telegram.ext import (
     ApplicationBuilder,
@@ -17,18 +15,6 @@ from collections import defaultdict
 from datetime import datetime, timedelta
 from difflib import SequenceMatcher
 
-# --- Flask Keep-Alive ---
-app_web = Flask(__name__)
-
-@app_web.route("/")
-def home():
-    return "I'm alive"
-
-def run_web():
-    app_web.run(host="0.0.0.0", port=8080)
-
-Thread(target=run_web).start()
-
 # --- Bot Logic ---
 PHRASES = {
     "ржомба": "🤣",
@@ -39,13 +25,13 @@ PHRASES = {
 }
 
 SPAM_LIMIT = 150
-CMD_FLOOD_INTERVAL = 3  # Секунд між командами
+CMD_FLOOD_INTERVAL = 3  # секунд між командами
 BAN_STEPS = [300, 600, 900, 1800]
 TIME_WINDOW = 300
 DATA_FILE = "users.json"
 
 user_messages = defaultdict(list)
-user_commands = defaultdict(datetime.now)
+user_commands = defaultdict(lambda: datetime.min)
 banned_users = {}
 ban_counts = defaultdict(int)
 profiles = {}
@@ -189,11 +175,8 @@ async def words(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     await update.message.reply_text("Фрази: \n" + "\n".join(["- " + fmt(w) for w in PHRASES]))
 
-async def keep_alive(context: ContextTypes.DEFAULT_TYPE):
-    pass
-
 async def main():
-    app = ApplicationBuilder().token("тут_токен").build()
+    app = ApplicationBuilder().token("7957837080:AAH1O_tEfW9xC9jfUt2hRXILG-Z579_w7ig").build()
 
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("words", words))
@@ -203,8 +186,6 @@ async def main():
     app.add_handler(CommandHandler("profile", profile))
     app.add_handler(CommandHandler("setphoto", setphoto))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, reply))
-
-    app.job_queue.run_repeating(keep_alive, interval=60, first=0)
 
     await app.run_polling()
 
