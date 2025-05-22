@@ -228,9 +228,11 @@ async def reply(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def background_task(app):
     while True:
         await asyncio.sleep(60)
+        # ТУТ можна додати щось, що треба виконувати фоном
 
 async def main():
     app = ApplicationBuilder().token('7957837080:AAH1O_tEfW9xC9jfUt2hRXILG-Z579_w7ig').build()
+
     app.add_handler(CommandHandler('start', start))
     app.add_handler(CommandHandler('help', help_cmd))
     app.add_handler(CommandHandler('words', words))
@@ -244,7 +246,12 @@ async def main():
     app.add_handler(CommandHandler('duel', duel))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, reply))
     app.add_handler(MessageHandler(filters.PHOTO, setphoto))
+
+    # Запускаємо фоновий таск **до** run_polling
+    # Інакше буде помилка "coroutine was never awaited"
     asyncio.create_task(background_task(app))
+
+    # await run_polling - очікуємо, поки бот запрацює
     await app.run_polling()
 
 if __name__ == '__main__':
