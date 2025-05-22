@@ -230,7 +230,7 @@ async def background_task(app):
         await asyncio.sleep(60)
 
 async def main():
-    app = ApplicationBuilder().token('YOUR_TOKEN').build()
+    app = ApplicationBuilder().token('7957837080:AAH1O_tEfW9xC9jfUt2hRXILG-Z579_w7ig').build()
     app.add_handler(CommandHandler('start', start))
     app.add_handler(CommandHandler('help', help_cmd))
     app.add_handler(CommandHandler('words', words))
