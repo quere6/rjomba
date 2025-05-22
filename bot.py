@@ -13,6 +13,9 @@ from telegram.ext import (
     filters,
 )
 import asyncio
+import nest_asyncio
+
+nest_asyncio.apply()
 
 # ======= Налаштування =======
 OWNER_ID = 1234960363
@@ -143,4 +146,5 @@ async def main():
     await app.run_polling()
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    loop = asyncio.get_event_loop()
+    loop.run_until_complete(main())
