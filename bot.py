@@ -2,7 +2,6 @@ import random
 import re
 import json
 import os
-import threading
 import asyncio
 from telegram import Update
 from telegram.ext import (
@@ -126,7 +125,8 @@ async def profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text += f"💬 Улюблена фраза: {fmt(data.get('fav', 'Немає'))}\n"
     text += f"📊 Ржомбометр: {data.get('rzhomb', 0)}\n"
     text += f"🪙 Монети: {data.get('coins', 0)}\n"
-    text += f"🚫 Забанений разів: {data.get('bans', 0)}"
+    text += f"🚫 Забанений разів: {data.get('bans', 0)}\n"
+    text += f"⚡ Енергія: {data.get('energy', 0)}"
     if data.get("photo"):
         await update.message.reply_photo(data["photo"], caption=text)
     else:
@@ -146,9 +146,23 @@ async def reply(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
     username = update.effective_user.username or f"user{uid}"
     profiles.setdefault(str(uid), {}).update({"username": username})
-    profiles[str(uid)].setdefault("rzhomb", 0)
-    profiles[str(uid)].setdefault("coins", 0)
-    profiles[str(uid)].setdefault("bans", 0)
+    profile = profiles[str(uid)]
+    profile.setdefault("rzhomb", 0)
+    profile.setdefault("coins", 0)
+    profile.setdefault("bans", 0)
+    profile.setdefault("energy", 100)
+    profile.setdefault("energy_last_update", now.timestamp())
+
+    # Відновлення енергії
+    last_update = datetime.fromtimestamp(profile["energy_last_update"])
+    minutes_passed = (now - last_update).total_seconds() // 60
+    energy_recovery_rate = 1  # енергії за 5 хвилин
+    recovery_period = 5  # хвилин
+
+    recovered_energy = int(minutes_passed // recovery_period) * energy_recovery_rate
+    if recovered_energy > 0:
+        profile["energy"] = min(100, profile["energy"] + recovered_energy)
+        profile["energy_last_update"] = now.timestamp()
 
     if uid in banned_users and now < banned_users[uid]:
         return
@@ -162,18 +176,25 @@ async def reply(update: Update, context: ContextTypes.DEFAULT_TYPE):
         duration = BAN_STEPS[min(ban_count, len(BAN_STEPS) - 1)]
         banned_users[uid] = now + timedelta(seconds=duration)
         ban_counts[uid] += 1
-        profiles[str(uid)]["bans"] += 1
+        profile["bans"] += 1
         await save_data()
         return
 
-    if "богдан" in text:
+    # Рахуємо скільки разів зустрічається слово "ржомба"
+    rzhomba_count = update.message.text.lower().count("ржомба")
+
+    # Щоб заробити ржомби — потрібна енергія
+    if rzhomba_count > 0:
+        if profile["energy"] >= rzhomba_count:
+            profile["rzhomb"] += rzhomba_count
+            profile["coins"] += rzhomba_count  # можна змінити логику
+            profile["energy"] -= rzhomba_count
+            await update.message.reply_text(f"Зароблено {rzhomba_count} ржомб! Енергія залишилась: {profile['energy']}")
+        else:
+            await update.message.reply_text(f"Не вистачає енергії для заробітку ржомб! Зараз: {profile['energy']}")
+    elif "богдан" in text:
         await update.message.reply_text("Я Кінчив")
     elif text in PHRASES:
-        profiles[str(uid)]["rzhomb"] += 1
-        profiles[str(uid)]["coins"] += 1
-        fav = profiles[str(uid)].get("fav")
-        if not fav:
-            profiles[str(uid)]["fav"] = text
         await update.message.reply_text(fmt(PHRASES[text]))
     elif similar(text):
         await update.message.reply_text("Ти Мазила")
@@ -184,11 +205,10 @@ async def reply(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # --- ФОН ДЛЯ ПІДТРИМКИ АКТИВНОСТІ ---
 
-def keep_alive():
-    async def loop():
-        while True:
-            await asyncio.sleep(60)
-    asyncio.run(loop())
+async def background_task(app):
+    while True:
+        # Просто "живемо", щоб хост не вбив
+        await asyncio.sleep(60)
 
 # --- MAIN ---
 
@@ -206,8 +226,8 @@ def main():
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, reply))
     app.add_handler(MessageHandler(filters.PHOTO, setphoto))
 
-    threading.Thread(target=keep_alive, daemon=True).start()
+    app.create_task(background_task(app))
+
     app.run_polling()
 
-if __name__ == "__main__":
-    main()
+if __name__ ==
