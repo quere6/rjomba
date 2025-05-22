@@ -1,128 +1,167 @@
 import random
 import re
-from telegram import Update
+import asyncio
+import json
+import os
+from telegram import Update, InputFile
 from telegram.ext import ApplicationBuilder, MessageHandler, CommandHandler, ContextTypes, filters
 from collections import defaultdict
 from datetime import datetime, timedelta
 from difflib import SequenceMatcher
 
-# === Налаштування ===
-YOUR_ID = 1234960363  # твій Telegram user ID
-
-# Словник фраз (що має написати користувач)
 PHRASES = {
     "ржомба": "🤣",
-    "ну ти там держись": "ССИКЛО",
-    "а воно мені не нада": "НЕ МУЖИК",
-    "наш живчик": "МІСТЕР БІСТ",
-    "сігма бой": "БОГДАН"
+    "ну ти там держись": "Ссикло",
+    "а воно мені не нада": "Не мужик",
+    "наш живчик": "Містер Біст",
+    "сігма бой": "Богдан"
 }
 
-# Антиспам
+SPAM_LIMIT = 150
+BAN_STEPS = [300, 600, 900, 1800]
+TIME_WINDOW = 300
+DATA_FILE = "users.json"
+
 user_messages = defaultdict(list)
 banned_users = {}
-user_ban_durations = defaultdict(lambda: 5 * 60)  # перший бан — 5 хв
-message_count = 0
+ban_counts = defaultdict(int)
+profiles = {}
+OWNER_ID = 1234960363
 
-SPAM_LIMIT = 150
-TIME_WINDOW = 5 * 60
-MAX_BAN = 30 * 60
+if os.path.exists(DATA_FILE):
+    with open(DATA_FILE, 'r') as f:
+        profiles = json.load(f)
 
-# Нормалізація тексту
+async def save_data():
+    with open(DATA_FILE, 'w') as f:
+        json.dump(profiles, f)
+
 def normalize(text):
-    text = text.lower()
-    text = re.sub(r"[^\w\s]", "", text)
-    return text.strip()
+    return re.sub(r"[^\w\s]", "", text.lower()).strip()
 
-# Перевірка на схожість
-def is_similar(input_text):
+def similar(input_text):
     for phrase in PHRASES:
         ratio = SequenceMatcher(None, input_text, phrase).ratio()
         if ratio > 0.7:
             return True
     return False
 
-# /start
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Я РЖОМБА БОТ")
+def fmt(text):
+    return " ".join(w.capitalize() for w in text.split())
 
-# /words
-async def words(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    word_list = "\n".join([f"- {w.upper()}" for w in PHRASES])
-    await update.message.reply_text(f"ОСЬ ФРАЗИ, ЯКІ Я РОЗУМІЮ:\n{word_list}")
-
-# /banlist
-async def banlist(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not banned_users:
-        await update.message.reply_text("ЗАРАЗ НІКОГО НЕ ЗАБАНЕНО.")
+async def ban(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != OWNER_ID:
         return
-    text = "ЗАБАНЕНІ КОРИСТУВАЧІ:\n"
-    for uid, end_time in banned_users.items():
-        until = end_time.strftime("%H:%M %d.%m.%Y")
-        text += f"• ID {uid} — ДО {until}\n"
-    await update.message.reply_text(text.strip())
+    if not context.args or not context.args[0].startswith("@"): 
+        return
+    username = context.args[0][1:]
+    for uid, profile in profiles.items():
+        if profile.get("username") == username:
+            banned_users[int(uid)] = datetime.now() + timedelta(seconds=1800)
+            await update.message.reply_text(f"Користувач @{username} забанений на 30 хвилин.")
+            return
+    await update.message.reply_text("Користувача не знайдено.")
 
-# /unban <user_id>
 async def unban(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id != YOUR_ID:
+    if update.effective_user.id != OWNER_ID:
         return
-    if not context.args:
-        await update.message.reply_text("ВКАЖИ ID КОРИСТУВАЧА")
+    if not context.args or not context.args[0].startswith("@"): 
         return
-    try:
-        uid = int(context.args[0])
-        if uid in banned_users:
+    username = context.args[0][1:]
+    for uid in list(banned_users):
+        if profiles.get(str(uid), {}).get("username") == username:
             del banned_users[uid]
-            user_ban_durations[uid] = 5 * 60
-            await update.message.reply_text(f"КОРИСТУВАЧ {uid} РОЗБЛОКОВАНИЙ.")
-        else:
-            await update.message.reply_text("КОРИСТУВАЧ НЕ В БАНІ.")
-    except ValueError:
-        await update.message.reply_text("НЕКОРЕКТНИЙ ID.")
+            await update.message.reply_text(f"Користувача @{username} розбанено.")
+            return
+    await update.message.reply_text("Користувача не знайдено або не забанений.")
 
-# Обробка повідомлень
-async def reply(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    global message_count
-    user_id = update.effective_user.id
-    now = datetime.now()
-    user_message = update.message.text.strip()
-
-    # Бан
-    if user_id in banned_users:
-        if now < banned_users[user_id]:
-            return  # нічого не відповідаємо
-        else:
-            del banned_users[user_id]
-
-    # Спам
-    user_messages[user_id].append(now)
-    user_messages[user_id] = [t for t in user_messages[user_id] if (now - t).total_seconds() <= TIME_WINDOW]
-    if len(user_messages[user_id]) > SPAM_LIMIT:
-        duration = user_ban_durations[user_id]
-        banned_users[user_id] = now + timedelta(seconds=duration)
-        user_ban_durations[user_id] = min(duration + 5 * 60, MAX_BAN)
+async def banlist(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != OWNER_ID:
         return
+    lst = [f"@{profiles[str(uid)].get('username')}" for uid in banned_users if str(uid) in profiles]
+    await update.message.reply_text("Забанені: \n" + "\n".join(lst) if lst else "Немає забанених")
 
-    norm_msg = normalize(user_message)
-    if norm_msg in PHRASES:
-        await update.message.reply_text(PHRASES[norm_msg])
-        message_count += 1
-    elif is_similar(norm_msg):
-        await update.message.reply_text("ТИ МАЗИЛА")
-        message_count += 1
+async def setphoto(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not update.message.photo:
+        await update.message.reply_text("Пришли фото")
+        return
+    uid = str(update.effective_user.id)
+    profiles.setdefault(uid, {})
+    file_id = update.message.photo[-1].file_id
+    profiles[uid]['photo'] = file_id
+    await save_data()
+    await update.message.reply_text("Фото встановлено!")
+
+async def profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    uid = str(update.effective_user.id)
+    data = profiles.get(uid, {})
+    text = f"Профіль @{data.get('username', 'немає')}\n"
+    text += f"Улюблена фраза: {data.get('fav', 'Немає')}\n"
+    text += f"Ржомбометр: {data.get('rzhomb', 0)}\n"
+    text += f"Монети: {data.get('coins', 0)}\n"
+    text += f"Забанений разів: {data.get('bans', 0)}"
+    if data.get("photo"):
+        await update.message.reply_photo(data["photo"], caption=text)
     else:
-        await update.message.reply_text("РЖОМБА")
+        await update.message.reply_text(text)
+
+async def keep_alive():
+    while True:
+        await asyncio.sleep(60)
+
+async def reply(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    now = datetime.now()
+    uid = update.effective_user.id
+    username = update.effective_user.username or f"user{uid}"
+    profiles.setdefault(str(uid), {}).update({"username": username})
+    profiles[str(uid)].setdefault("rzhomb", 0)
+    profiles[str(uid)].setdefault("coins", 0)
+    profiles[str(uid)].setdefault("bans", 0)
+
+    if uid in banned_users and now < banned_users[uid]:
         return
 
-    if message_count >= 5:
-        await update.message.reply_text("РЖОМБА")
-        message_count = 0
+    text = normalize(update.message.text)
+    user_messages[uid].append(now)
+    user_messages[uid] = [t for t in user_messages[uid] if (now - t).total_seconds() < TIME_WINDOW]
 
-# Запуск
+    if len(user_messages[uid]) > SPAM_LIMIT:
+        ban_count = ban_counts[uid]
+        duration = BAN_STEPS[min(ban_count, len(BAN_STEPS) - 1)]
+        banned_users[uid] = now + timedelta(seconds=duration)
+        ban_counts[uid] += 1
+        profiles[str(uid)]["bans"] += 1
+        await save_data()
+        return
+
+    if text in PHRASES:
+        profiles[str(uid)]["rzhomb"] += 1
+        profiles[str(uid)]["coins"] += 1
+        fav = profiles[str(uid)].get("fav")
+        if not fav:
+            profiles[str(uid)]["fav"] = text
+        await update.message.reply_text(fmt(PHRASES[text]))
+    elif similar(text):
+        await update.message.reply_text("Ти мазила")
+    else:
+        await update.message.reply_text("Ржомба")
+    await save_data()
+
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("Я Ржомба Бот")
+
+async def words(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("Фрази: \n" + "\n".join(["- " + fmt(w) for w in PHRASES]))
+
 app = ApplicationBuilder().token("7957837080:AAH1O_tEfW9xC9jfUt2hRXILG-Z579_w7ig").build()
 app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("words", words))
-app.add_handler(CommandHandler("banlist", banlist))
+app.add_handler(CommandHandler("ban", ban))
 app.add_handler(CommandHandler("unban", unban))
+app.add_handler(CommandHandler("banlist", banlist))
+app.add_handler(CommandHandler("profile", profile))
+app.add_handler(CommandHandler("setphoto", setphoto))
 app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, reply))
+
+app.job_queue.run_repeating(lambda ctx: None, interval=60, first=0)
 app.run_polling()
