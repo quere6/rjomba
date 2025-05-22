@@ -207,12 +207,11 @@ async def reply(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def background_task(app):
     while True:
-        # Просто "живемо", щоб хост не вбив
         await asyncio.sleep(60)
 
 # --- MAIN ---
 
-def main():
+async def main():
     app = ApplicationBuilder().token("7957837080:AAH1O_tEfW9xC9jfUt2hRXILG-Z579_w7ig").build()
 
     app.add_handler(CommandHandler("start", start))
@@ -226,9 +225,10 @@ def main():
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, reply))
     app.add_handler(MessageHandler(filters.PHOTO, setphoto))
 
-    app.create_task(background_task(app))
+    # Запускаємо фонову задачу асинхронно
+    asyncio.create_task(background_task(app))
 
-    app.run_polling()
+    await app.run_polling()
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())
