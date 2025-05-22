@@ -228,7 +228,7 @@ async def background_task():
     while True:
         await asyncio.sleep(60)
 
-async def main():
+async def run_bot():
     app = ApplicationBuilder().token("7957837080:AAH1O_tEfW9xC9jfUt2hRXILG-Z579_w7ig").build()
 
     app.add_handler(CommandHandler("start", start))
@@ -246,7 +246,20 @@ async def main():
     app.add_handler(MessageHandler(filters.PHOTO, setphoto))
 
     asyncio.create_task(background_task())
-    await app.run_polling()
+    await app.initialize()
+    await app.start()
+    await app.updater.start_polling()
+    await app.updater.idle()
+    await app.stop()
+    await app.shutdown()
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    try:
+        asyncio.run(run_bot())
+    except RuntimeError as e:
+        if str(e).startswith("Cannot close a running event loop"):
+            loop = asyncio.get_event_loop()
+            loop.create_task(run_bot())
+            loop.run_forever()
+        else:
+            raise
