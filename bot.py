@@ -4,7 +4,6 @@ import re
 from datetime import datetime, timedelta
 from collections import defaultdict
 from difflib import SequenceMatcher
-TOKEN = "7957837080:AAH1O_tEfW9xC9jfUt2hRXILG-Z579_w7ig"
 from telegram import Update
 from telegram.ext import (
     ApplicationBuilder,
@@ -19,7 +18,7 @@ import asyncio
 # ======= Налаштування =======
 OWNER_ID = 1234960363
 PORT = int(os.getenv("PORT", "8080"))
-TOKEN = os.getenv("7957837080:AAH1O_tEfW9xC9jfUt2hRXILG-Z579_w7ig")
+TOKEN = "7957837080:AAH1O_tEfW9xC9jfUt2hRXILG-Z579_w7ig"  # Токен прописаний прямо тут
 
 PHRASES = {
     "ржомба": "🤣",
