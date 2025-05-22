@@ -4,7 +4,7 @@ import re
 from datetime import datetime, timedelta
 from collections import defaultdict
 from difflib import SequenceMatcher
-TOKEN = os.getenv("BOT_TOKEN")
+TOKEN = "7957837080:AAH1O_tEfW9xC9jfUt2hRXILG-Z579_w7ig"
 from telegram import Update
 from telegram.ext import (
     ApplicationBuilder,
