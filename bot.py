@@ -231,7 +231,7 @@ async def background_task(app):
         # ТУТ можна додати щось, що треба виконувати фоном
 
 async def main():
-    app = ApplicationBuilder().token('YOUR_TOKEN').build()
+    app = ApplicationBuilder().token('7957837080:AAH1O_tEfW9xC9jfUt2hRXILG-Z579_w7ig').build()
 
     app.add_handler(CommandHandler('start', start))
     app.add_handler(CommandHandler('help', help_cmd))
