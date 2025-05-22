@@ -4,6 +4,7 @@ from telegram.ext import ApplicationBuilder, MessageHandler, ContextTypes, filte
 from collections import defaultdict
 from datetime import datetime, timedelta
 
+# Словник фраз і відповідей
 RESPONSES = {
     "Ржомба": "🤣",
     "Ну ти там держись ✊": "Ссикло",
@@ -11,7 +12,7 @@ RESPONSES = {
     "Наш Живчик 🇺🇦🇺🇦🇺🇦": "містер біст"
 }
 
-message_count = 0
+phrase_count = 0  # Лічильник фраз, що співпали
 
 # Для спам-захисту
 user_messages = defaultdict(list)
@@ -22,7 +23,7 @@ TIME_WINDOW = 5 * 60   # 5 хвилин (секунди)
 BAN_TIME = 15 * 60     # 15 хвилин (секунди)
 
 async def reply(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    global message_count
+    global phrase_count
     user_id = update.effective_user.id
     now = datetime.now()
     user_message = update.message.text.strip()
@@ -38,7 +39,7 @@ async def reply(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # Оновлення часу повідомлень користувача
     user_messages[user_id].append(now)
-    # Очищуємо старі повідомлення за межами вікна в 5 хвилин
+    # Очищуємо старі повідомлення за межами 5 хвилин
     user_messages[user_id] = [t for t in user_messages[user_id] if (now - t).total_seconds() <= TIME_WINDOW]
 
     # Перевірка на спам
@@ -47,13 +48,18 @@ async def reply(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Не дрочи так часто - хуй болітиме")
         return
 
-    # Обробка повідомлень для ржомби
+    # Якщо повідомлення співпало з однією із фраз
     if user_message in RESPONSES:
+        phrase_count += 1
         await update.message.reply_text(RESPONSES[user_message])
-        message_count += 1
-    elif message_count >= 5:
+
+        # Після 5 фраз – бот пише "Ржомба"
+        if phrase_count >= 5:
+            await update.message.reply_text("Ржомба")
+            phrase_count = 0
+    else:
+        # Повідомлення не співпало з фразою – відразу відповідаємо "Ржомба" і не рахуємо у phrase_count
         await update.message.reply_text("Ржомба")
-        message_count = 0
 
 app = ApplicationBuilder().token("7957837080:AAH1O_tEfW9xC9jfUt2hRXILG-Z579_w7ig").build()
 app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, reply))
